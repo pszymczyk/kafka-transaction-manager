@@ -3,12 +3,28 @@
  */
 package com.pszymczyk.kafka;
 
+import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+
+import com.pszymczyk.kafka.api.KafkaTransactionManager;
+
+import java.util.List;
+import java.util.concurrent.Future;
 
 class LibraryTest {
-    @Test void someLibraryMethodReturnsTrue() {
-        Library classUnderTest = new Library();
-        assertTrue(classUnderTest.someLibraryMethod(), "someLibraryMethod should return 'true'");
+    private Future readProcessWrite;
+
+    @Test 
+    void someLibraryMethodReturnsTrue() {
+        KafkaTransactionManager<String, String> transactionalProducer = null;
+        ConsumerRecords<String, String> consumerRecords = new ConsumerRecords<>(null);
+        ConsumerGroupMetadata consumerGroupMetadata = new ConsumerGroupMetadata("trolo");
+
+        readProcessWrite = transactionalProducer.readProcessWrite(consumerRecords, consumerGroupMetadata, cR -> {
+            //logika biznesowa
+            return List.of(new ProducerRecord<String,String>("loan-application-decisions", "trolololo"));
+        });
     }
 }
