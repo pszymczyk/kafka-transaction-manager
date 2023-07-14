@@ -11,56 +11,56 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
+import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class KafkaTransactionManagerImpl<PRK, PRV> implements KafkaTransactionManager<PRK, PRV> {
+public class KafkaTransactionManagerImpl<PRK, PRV, CRK, CRV> implements KafkaTransactionManager<CRK, CRV> {
 
     private final KafkaProducer<PRK, PRV> kafkaProducer;
+    private final ConsumerGroupMetadata consumerGroupMetadata;
+    private final Function<ConsumerRecord<CRK, CRV>, List<ProducerRecord<PRK, PRV>>> transactionPerRecord;
     private final Callback sendCallback;
     private final int maxRetries;
-    private final boolean transactionPerRecord;
-    private final Supplier<Exception> retryHandler;
-    private final Supplier<ConsumerRecord> retryExhaustedHandler;
+    private final Consumer<Exception> retryHandler;
+    private final Consumer<ConsumerRecord<CRK, CRV>> retryExhaustedHandler;
 
-    public KafkaTransactionManagerImpl(KafkaProducer<PRK, PRV> kafkaProducer, Callback sendCallback, int maxRetries, boolean transactionPerRecord, Supplier<Exception> retryHandler, Supplier<ConsumerRecord<K,V>> retryExhaustedHandler) {
+    public KafkaTransactionManagerImpl(KafkaProducer<PRK, PRV> kafkaProducer, ConsumerGroupMetadata consumerGroupMetadata, Function<ConsumerRecord<CRK, CRV>, List<ProducerRecord<PRK, PRV>>> transactionPerRecord, Callback sendCallback, int maxRetries, Consumer<Exception> retryHandler, Consumer<ConsumerRecord<CRK, CRV>> retriesExhaustedHandler) {
         this.kafkaProducer = kafkaProducer;
+        this.consumerGroupMetadata = consumerGroupMetadata;
+        this.transactionPerRecord = transactionPerRecord;
         this.sendCallback = sendCallback;
         this.maxRetries = maxRetries;
-        this.transactionPerRecord = transactionPerRecord;
         this.retryHandler = retryHandler;
-        this.retryExhaustedHandler = retryExhaustedHandler;
+        this.retryExhaustedHandler = retriesExhaustedHandler;
+        this.kafkaProducer.initTransactions();
     }
 
-    @Override
-    public List<Future<RecordMetadata>> sendInTransaction(List<ProducerRecord<PRK, PRV>> producerRecords) {
-        return null;
-    }
 
     @Override
-    public <CRK, CRV> List<Future<RecordMetadata>> readProcessWrite(ConsumerRecords<CRK, CRV> consumerRecords, ConsumerGroupMetadata consumerGroupMetadata, Function<ConsumerRecords<CRK, CRV>, List<ProducerRecord<PRK, PRV>>> f) {
+    public List<Future<RecordMetadata>> handleInTransaction(ConsumerRecords<CRK, CRV> consumerRecords) {
         int retriesCounter = 0;
         try {
-            if (retriesCounter < maxRetries) {
-                kafkaProducer.beginTransaction();
-                List<ProducerRecord<PRK, PRV>> producerRecords = f.apply(consumerRecords);
-                Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>();
-                consumerRecords.forEach(cR -> offsets.put(new TopicPartition(cR.topic(), cR.partition()), new OffsetAndMetadata(cR.offset())));
-                kafkaProducer.sendOffsetsToTransaction(offsets, consumerGroupMetadata);
-                List<Future<RecordMetadata>> collect = producerRecords.stream().map(pR -> kafkaProducer.send(pR, sendCallback)).collect(Collectors.toList());
-                kafkaProducer.commitTransaction();
-                return collect;
-            } else {
-                retryExhaustedHandler.
+            for (var consumerRecord : consumerRecords) {
+                if (retriesCounter < maxRetries) {
+                    kafkaProducer.beginTransaction();
+                    List<ProducerRecord<PRK, PRV>> producerRecords = transactionPerRecord.apply(consumerRecord);
+                    List<Future<RecordMetadata>> collect = producerRecords.stream().map(pR -> kafkaProducer.send(pR, sendCallback)).collect(Collectors.toList());
+                    kafkaProducer.sendOffsetsToTransaction(Map.of(new TopicPartition(consumerRecord.topic(), consumerRecord.partition()), new OffsetAndMetadata(consumerRecord.offset())), consumerGroupMetadata);
+                    kafkaProducer.commitTransaction();
+
+                    return collect;
+                } else {
+                    //TODO retry exhausted
+                    return null;
+                }
             }
 
         } catch (Exception e) {
-            retriesCounter++;
+            ++retriesCounter;
             kafkaProducer.abortTransaction();
         }
         return null;

@@ -11,16 +11,11 @@ repositories {
 dependencies {
     implementation 'org.apache.kafka:kafka-clients:3.5.0'
 
-    // Use JUnit Jupiter for testing.
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
-
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
-    // This dependency is exported to consumers, that is to say found on their compile classpath.
-    api 'org.apache.commons:commons-math3:3.6.1'
-
-    // This dependency is used internally, and not exposed to consumers on their own compile classpath.
-    implementation 'com.google.guava:guava:31.1-jre'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+    testImplementation 'org.testcontainers:testcontainers:1.18.1'
+    testImplementation 'org.testcontainers:kafka:1.18.1'
+    testImplementation 'org.awaitility:awaitility:4.2.0'
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

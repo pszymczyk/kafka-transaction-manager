@@ -3,28 +3,96 @@
  */
 package com.pszymczyk.kafka;
 
-import org.apache.kafka.clients.consumer.ConsumerGroupMetadata;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
+import com.pszymczyk.kafka.api.KafkaTransactionManagerBuilder;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import com.pszymczyk.kafka.api.KafkaTransactionManager;
-
-import java.util.List;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.function.Function;
+import java.util.function.Predicate;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class LibraryTest {
-    private Future readProcessWrite;
 
-    @Test 
-    void someLibraryMethodReturnsTrue() {
-        KafkaTransactionManager<String, String> transactionalProducer = null;
-        ConsumerRecords<String, String> consumerRecords = new ConsumerRecords<>(null);
-        ConsumerGroupMetadata consumerGroupMetadata = new ConsumerGroupMetadata("trolo");
+    private static final String outputTopic = "output";
+    private static final String inputTopic = "input";
 
-        readProcessWrite = transactionalProducer.readProcessWrite(consumerRecords, consumerGroupMetadata, cR -> {
-            //logika biznesowa
-            return List.of(new ProducerRecord<String,String>("loan-application-decisions", "trolololo"));
-        });
+    @BeforeAll
+    public static void setupKafka() {
+        KafkaContainerStarter.start();
+
+    }
+
+    @Test
+    void shouldPerformTransaction() {
+        //given
+        String groupId = "some-group";
+        var kafkaProducer = kafkaProducer();
+        var inputConsumer = kafkaConsumer(groupId);
+        inputConsumer.assign(List.of(new TopicPartition(inputTopic, 0)));
+
+        var outputConsumer = kafkaConsumer(groupId);
+        outputConsumer.assign(List.of(new TopicPartition(outputTopic, 0)));
+
+
+        var kafkaTransactionManager = KafkaTransactionManagerBuilder.<String, String, String, String>newKafkaTransactionManager()
+                .withTransactionPerRecord(consumerRecord -> List.of(new ProducerRecord<>(outputTopic, "pong")))
+                .withRetries(3)
+                .withConsumerGroupMetadata(new ConsumerGroupMetadata("some-group"))
+                .build(kafkaProducer);
+
+        ConsumerRecords<String, String> consumerRecords = await().atMost(3, SECONDS)
+                .until(() -> inputConsumer.poll(Duration.ofMillis(100)),
+                        consumerRecords1 -> !consumerRecords1.isEmpty());
+
+        //when
+        kafkaTransactionManager.handleInTransaction(consumerRecords);
+
+        //then
+        ConsumerRecords<String, String> until = await().atMost(3, SECONDS)
+                .until(() -> outputConsumer.poll(Duration.ofMillis(100)),
+                        consumerRecords1 -> !consumerRecords1.isEmpty());
+        List<ConsumerRecord<String, String>> records = until.records(new TopicPartition(outputTopic, 0));
+
+        assertEquals("pong", records.get(records.size()-1).value());
+
+    }
+
+
+    protected Consumer<String, String> kafkaConsumer(String groupId) {
+        return new KafkaConsumer<>(
+                Map.of(
+                        ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, KafkaContainerStarter.getBootstrapServers(),
+                        ConsumerConfig.GROUP_ID_CONFIG, groupId,
+                        ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest",
+                        ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                        ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
+                        ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 3,
+                        ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false)
+        );
+    }
+
+    protected static KafkaProducer<String, String> kafkaProducer() {
+        return new KafkaProducer<>(Map.of(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KafkaContainerStarter.getBootstrapServers(),
+                ProducerConfig.TRANSACTIONAL_ID_CONFIG, "trala-1",
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class));
     }
 }
