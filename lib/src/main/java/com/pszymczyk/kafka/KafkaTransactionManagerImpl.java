@@ -11,6 +11,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -41,28 +43,31 @@ public class KafkaTransactionManagerImpl<PRK, PRV, CRK, CRV> implements KafkaTra
 
 
     @Override
-    public List<Future<RecordMetadata>> handleInTransaction(ConsumerRecords<CRK, CRV> consumerRecords) {
-        int retriesCounter = 0;
-        try {
-            for (var consumerRecord : consumerRecords) {
-                if (retriesCounter < maxRetries) {
+    public Map<ConsumerRecord<CRK, CRV>, List<Future<RecordMetadata>>> handleInTransaction(ConsumerRecords<CRK, CRV> consumerRecords) {
+        Map<ConsumerRecord<CRK, CRV>, List<Future<RecordMetadata>>> results = new HashMap<>();
+        for (var consumerRecord : consumerRecords) {
+            for (int i=0; i<= maxRetries; i++) {
+                try {
                     kafkaProducer.beginTransaction();
                     List<ProducerRecord<PRK, PRV>> producerRecords = transactionPerRecord.apply(consumerRecord);
-                    List<Future<RecordMetadata>> collect = producerRecords.stream().map(pR -> kafkaProducer.send(pR, sendCallback)).collect(Collectors.toList());
                     kafkaProducer.sendOffsetsToTransaction(Map.of(new TopicPartition(consumerRecord.topic(), consumerRecord.partition()), new OffsetAndMetadata(consumerRecord.offset())), consumerGroupMetadata);
+                    results.put(consumerRecord, producerRecords.stream().map(pR -> kafkaProducer.send(pR, sendCallback)).collect(Collectors.toList()));
                     kafkaProducer.commitTransaction();
-
-                    return collect;
-                } else {
-                    //TODO retry exhausted
-                    return null;
+                    break;
+                } catch (Exception exception) {
+                    kafkaProducer.abortTransaction();
+                    if (i!=0) {
+                        retryHandler.accept(exception);
+                    }
+                    if (i==maxRetries) {
+                        retryExhaustedHandler.accept(consumerRecord);
+                    }
                 }
             }
 
-        } catch (Exception e) {
-            ++retriesCounter;
-            kafkaProducer.abortTransaction();
+            return results;
         }
-        return null;
+        return results;
+
     }
 }

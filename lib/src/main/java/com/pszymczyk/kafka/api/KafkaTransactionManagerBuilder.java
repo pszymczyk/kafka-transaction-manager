@@ -26,12 +26,12 @@ public class KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> {
 
     public KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> withRetriesExhaustedHandler(Consumer<ConsumerRecord<CRK, CRV>> retriesExhaustedHandler) {
         this.retriesExhaustedHandler = retriesExhaustedHandler;
-        return null;
+        return this;
     }
 
     public KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> withRetryHandler(Consumer<Exception> retryHandler) {
         this.retryHandler = retryHandler;
-        return null;
+        return this;
     }
 
     public KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> withSendCallback(Callback sendCallback) {

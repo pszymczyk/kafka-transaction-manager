@@ -16,6 +16,8 @@ dependencies {
     testImplementation 'org.testcontainers:testcontainers:1.18.1'
     testImplementation 'org.testcontainers:kafka:1.18.1'
     testImplementation 'org.awaitility:awaitility:4.2.0'
+    testImplementation 'org.mockito:mockito-core:5.4.0'
+    testImplementation 'org.slf4j:slf4j-log4j12:1.7.36'
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

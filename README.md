@@ -6,3 +6,5 @@
 - [ ] Transactional producers pool
 - [ ] Retries
 - [ ] Transaction per batch support
+- [ ] Documentation
+- [ ] Demo project
