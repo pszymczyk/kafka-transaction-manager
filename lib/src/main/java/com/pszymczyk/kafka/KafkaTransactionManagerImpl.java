@@ -11,7 +11,6 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,16 +26,16 @@ public class KafkaTransactionManagerImpl<PRK, PRV, CRK, CRV> implements KafkaTra
     private final Function<ConsumerRecord<CRK, CRV>, List<ProducerRecord<PRK, PRV>>> transactionPerRecord;
     private final Callback sendCallback;
     private final int maxRetries;
-    private final Consumer<Exception> retryHandler;
+    private final Consumer<Exception> exceptionHandler;
     private final Consumer<ConsumerRecord<CRK, CRV>> retryExhaustedHandler;
 
-    public KafkaTransactionManagerImpl(KafkaProducer<PRK, PRV> kafkaProducer, ConsumerGroupMetadata consumerGroupMetadata, Function<ConsumerRecord<CRK, CRV>, List<ProducerRecord<PRK, PRV>>> transactionPerRecord, Callback sendCallback, int maxRetries, Consumer<Exception> retryHandler, Consumer<ConsumerRecord<CRK, CRV>> retriesExhaustedHandler) {
+    public KafkaTransactionManagerImpl(KafkaProducer<PRK, PRV> kafkaProducer, ConsumerGroupMetadata consumerGroupMetadata, Function<ConsumerRecord<CRK, CRV>, List<ProducerRecord<PRK, PRV>>> transactionPerRecord, Callback sendCallback, int maxRetries, Consumer<Exception> exceptionHandler, Consumer<ConsumerRecord<CRK, CRV>> retriesExhaustedHandler) {
         this.kafkaProducer = kafkaProducer;
         this.consumerGroupMetadata = consumerGroupMetadata;
         this.transactionPerRecord = transactionPerRecord;
         this.sendCallback = sendCallback;
         this.maxRetries = maxRetries;
-        this.retryHandler = retryHandler;
+        this.exceptionHandler = exceptionHandler;
         this.retryExhaustedHandler = retriesExhaustedHandler;
         this.kafkaProducer.initTransactions();
     }
@@ -46,7 +45,7 @@ public class KafkaTransactionManagerImpl<PRK, PRV, CRK, CRV> implements KafkaTra
     public Map<ConsumerRecord<CRK, CRV>, List<Future<RecordMetadata>>> handleInTransaction(ConsumerRecords<CRK, CRV> consumerRecords) {
         Map<ConsumerRecord<CRK, CRV>, List<Future<RecordMetadata>>> results = new HashMap<>();
         for (var consumerRecord : consumerRecords) {
-            for (int i=0; i<= maxRetries; i++) {
+            for (int i = 0; i <= maxRetries; i++) {
                 try {
                     kafkaProducer.beginTransaction();
                     List<ProducerRecord<PRK, PRV>> producerRecords = transactionPerRecord.apply(consumerRecord);
@@ -56,18 +55,13 @@ public class KafkaTransactionManagerImpl<PRK, PRV, CRK, CRV> implements KafkaTra
                     break;
                 } catch (Exception exception) {
                     kafkaProducer.abortTransaction();
-                    if (i!=0) {
-                        retryHandler.accept(exception);
-                    }
-                    if (i==maxRetries) {
+                    exceptionHandler.accept(exception);
+                    if (i == maxRetries) {
                         retryExhaustedHandler.accept(consumerRecord);
                     }
                 }
             }
-
-            return results;
         }
         return results;
-
     }
 }

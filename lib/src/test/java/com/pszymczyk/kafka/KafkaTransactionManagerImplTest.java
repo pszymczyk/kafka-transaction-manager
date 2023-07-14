@@ -32,12 +32,57 @@ class KafkaTransactionManagerImplTest {
     @BeforeAll
     public static void setupKafka() {
         KafkaContainerStarter.start();
-
     }
 
     @Test
-    void shouldExecuteRetryHandler() {
+    void shouldRetryOnce() {
+        //given
+        String groupId = "some-group";
+        var kafkaProducer = kafkaProducer();
+        var inputConsumer = kafkaConsumer(groupId);
+        inputConsumer.assign(List.of(new TopicPartition(inputTopic, 0)));
 
+        var outputConsumer = kafkaConsumer(groupId);
+        outputConsumer.assign(List.of(new TopicPartition(outputTopic, 0)));
+
+        Consumer<Exception> retryMock = mock(Consumer.class);
+        Consumer<ConsumerRecord<String, String>> retryExhaustedMock = mock(Consumer.class);
+
+        final boolean[] thrown = {false};
+        var kafkaTransactionManager = KafkaTransactionManagerBuilder.<String, String, String, String>newKafkaTransactionManager()
+                .withTransactionPerRecord(consumerRecord -> {
+                    if (thrown[0]) {
+                        return List.of(new ProducerRecord<>(outputTopic, "pong"));
+                    } else {
+                        thrown[0] = true;
+                        throw new RuntimeException("Upssss...");
+                    }
+                })
+                .withRetries(3)
+                .withConsumerGroupMetadata(new ConsumerGroupMetadata("some-group"))
+                .withExceptionHandler(retryMock)
+                .withRetriesExhaustedHandler(retryExhaustedMock)
+                .build(kafkaProducer);
+
+
+        ConsumerRecords<String, String> consumerRecords = await().atMost(3, SECONDS)
+                .until(() -> inputConsumer.poll(Duration.ofMillis(100)),
+                        consumerRecords1 -> !consumerRecords1.isEmpty());
+
+        //when
+        kafkaTransactionManager.handleInTransaction(consumerRecords);
+
+        //then
+        verify(retryMock, times(1)).accept(any());
+        verifyNoInteractions(retryExhaustedMock);
+
+        //then
+        ConsumerRecords<String, String> until = await().atMost(3, SECONDS)
+                .until(() -> outputConsumer.poll(Duration.ofMillis(100)),
+                        consumerRecords1 -> !consumerRecords1.isEmpty());
+        List<ConsumerRecord<String, String>> records = until.records(new TopicPartition(outputTopic, 0));
+
+        assertEquals("pong", records.get(records.size() - 1).value());
     }
 
     @Test
@@ -60,7 +105,7 @@ class KafkaTransactionManagerImplTest {
                 })
                 .withRetries(3)
                 .withConsumerGroupMetadata(new ConsumerGroupMetadata("some-group"))
-                .withRetryHandler(retryMock)
+                .withExceptionHandler(retryMock)
                 .withRetriesExhaustedHandler(retryExhaustedMock)
                 .build(kafkaProducer);
 

@@ -16,7 +16,7 @@ public class KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> {
     private Callback sendCallback;
     private int maxRetries;
     private Function<ConsumerRecord<CRK, CRV>, List<ProducerRecord<PRK, PRV>>> transactionPerRecord;
-    private Consumer<Exception> retryHandler;
+    private Consumer<Exception> exceptionHandler;
     private Consumer<ConsumerRecord<CRK,CRV>> retriesExhaustedHandler;
     private ConsumerGroupMetadata consumerGroupMetadata;
 
@@ -29,8 +29,8 @@ public class KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> {
         return this;
     }
 
-    public KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> withRetryHandler(Consumer<Exception> retryHandler) {
-        this.retryHandler = retryHandler;
+    public KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> withExceptionHandler(Consumer<Exception> exceptionHandler) {
+        this.exceptionHandler = exceptionHandler;
         return this;
     }
 
@@ -66,7 +66,7 @@ public class KafkaTransactionManagerBuilder<PRK, PRV, CRK, CRV> {
                 transactionPerRecord,
                 sendCallback,
                 maxRetries,
-                retryHandler,
+                exceptionHandler,
                 retriesExhaustedHandler);
     }
 
