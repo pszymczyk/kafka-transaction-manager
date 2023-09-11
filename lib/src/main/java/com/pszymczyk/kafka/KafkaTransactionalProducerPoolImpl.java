@@ -29,6 +29,7 @@ public class KafkaTransactionalProducerPoolImpl<K, V> implements KafkaTransactio
             Map<String, Object> mutableConfigs = new HashMap<>(configs);
             mutableConfigs.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, txIdPrefix+"-"+i);
             PoolAwareTransactionalProducer<K, V> producer = new PoolAwareTransactionalProducer<>(new KafkaProducer<>(mutableConfigs, keySerializer, valueSerializer), this);
+            producer.initTransactions();
             cache.add(producer);
         }
     }

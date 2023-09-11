@@ -1,10 +1,29 @@
 plugins {
-    // Apply the java-library plugin for API and implementation separation.
     id 'java-library'
+    id 'maven-publish'
+}
+
+
+
+publishing {
+    publications {
+        myLibrary(MavenPublication) {
+            groupId = 'com.pszymczyk.kafka'
+            artifactId = 'kafka-transaction-manager'
+            version = '0.0.1'
+            from components.java
+        }
+    }
+
+    repositories {
+        maven {
+            name = 'myRepo'
+            url = layout.buildDirectory.dir("repo")
+        }
+    }
 }
 
 repositories {
-    // Use Maven Central for resolving dependencies.
     mavenCentral()
 }
 
