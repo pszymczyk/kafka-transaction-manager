@@ -26,7 +26,7 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
-class KafkaTransactionManagerImplTest {
+class KafkaTransactionManagerTest {
 
     private static final TopicPartition outputTopic = new TopicPartition("output", 0);
     private static final TopicPartition inputTopic = new TopicPartition("input", 0);
@@ -71,7 +71,7 @@ class KafkaTransactionManagerImplTest {
                 .until(() -> consumer.poll(Duration.ofMillis(100)), consumerRecords1 -> !consumerRecords1.isEmpty());
 
         //when
-        kafkaTransactionManager.handleInTransaction(consumerRecords);
+        kafkaTransactionManager.executeInTransaction(consumerRecords);
 
         //then
         verify(exceptionHandler, times(1)).accept(any());
@@ -107,7 +107,7 @@ class KafkaTransactionManagerImplTest {
                 .until(() -> consumer.poll(Duration.ofMillis(100)), cR -> !cR.isEmpty());
 
         //when
-        kafkaTransactionManager.handleInTransaction(consumerRecords);
+        kafkaTransactionManager.executeInTransaction(consumerRecords);
 
         //then
         verify(exceptionHandler, times(4)).accept(any());
@@ -130,7 +130,7 @@ class KafkaTransactionManagerImplTest {
                 .until(() -> consumer.poll(Duration.ofMillis(100)), cR -> !cR.isEmpty());
 
         //when
-        kafkaTransactionManager.handleInTransaction(consumerRecords);
+        kafkaTransactionManager.executeInTransaction(consumerRecords);
 
         //then
         consumer.assign(List.of(outputTopic));
@@ -138,7 +138,7 @@ class KafkaTransactionManagerImplTest {
         ConsumerRecords<String, String> output = await()
                 .atMost(3, SECONDS)
                 .until(() -> consumer.poll(Duration.ofMillis(100)), cR -> !cR.isEmpty());
-        List<ConsumerRecord<String, String>> records = output.records(outputTopic);
+        var records = output.records(outputTopic);
         assertEquals("pong", records.get(records.size() - 1).value());
     }
 

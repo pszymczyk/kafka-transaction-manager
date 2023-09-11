@@ -11,6 +11,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,15 +43,15 @@ public class KafkaTransactionManagerImpl<PRK, PRV, CRK, CRV> implements KafkaTra
 
 
     @Override
-    public Map<ConsumerRecord<CRK, CRV>, List<Future<RecordMetadata>>> handleInTransaction(ConsumerRecords<CRK, CRV> consumerRecords) {
-        Map<ConsumerRecord<CRK, CRV>, List<Future<RecordMetadata>>> results = new HashMap<>();
+    public List<Future<RecordMetadata>> executeInTransaction(ConsumerRecords<CRK, CRV> consumerRecords) {
+        List<Future<RecordMetadata>> results = new ArrayList<>();
         for (var consumerRecord : consumerRecords) {
             for (int i = 0; i <= maxRetries; i++) {
                 try {
                     kafkaProducer.beginTransaction();
                     List<ProducerRecord<PRK, PRV>> producerRecords = transactionPerRecord.apply(consumerRecord);
                     kafkaProducer.sendOffsetsToTransaction(Map.of(new TopicPartition(consumerRecord.topic(), consumerRecord.partition()), new OffsetAndMetadata(consumerRecord.offset())), consumerGroupMetadata);
-                    results.put(consumerRecord, producerRecords.stream().map(pR -> kafkaProducer.send(pR, sendCallback)).collect(Collectors.toList()));
+                     results.addAll(producerRecords.stream().map(pR -> kafkaProducer.send(pR, sendCallback)).collect(Collectors.toList()));
                     kafkaProducer.commitTransaction();
                     break;
                 } catch (Exception exception) {

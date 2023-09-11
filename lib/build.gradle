@@ -9,7 +9,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.apache.kafka:kafka-clients:3.5.0'
+    implementation 'org.apache.kafka:kafka-clients:3.5.1'
 
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
